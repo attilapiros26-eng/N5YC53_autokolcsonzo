@@ -1,0 +1,226 @@
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from datetime import date, datetime, timedelta
+from typing import List, Optional
+
+class Auto(ABC):
+    def __init__(self, rendszam: str, tipus: str, berleti_dij: int):
+        self._rendszam = rendszam
+        self._tipus = tipus
+        self._berleti_dij = berleti_dij
+        self._foglalt_napok: List[date] = []
+
+    @property
+    def rendszam(self) -> str:
+        return self._rendszam
+
+    @property
+    def tipus(self) -> str:
+        return self._tipus
+
+    @property
+    def berleti_dij(self) -> int:
+        return self._berleti_dij
+
+    def foglalt_e(self, datum: date) -> bool:
+        return datum in self._foglalt_napok
+
+    def foglal_nap(self, datum: date):
+        self._foglalt_napok.append(datum)
+
+    def felszabadit_nap(self, datum: date):
+        if datum in self._foglalt_napok:
+            self._foglalt_napok.remove(datum)
+
+    @abstractmethod
+    def leiras(self) -> str:
+        pass
+
+    def __str__(self) -> str:
+        return f"{self._rendszam} - {self._tipus} ({self._berleti_dij} Ft/nap)"
+
+class Szemelyauto(Auto):
+    def __init__(self, rendszam: str, tipus: str, berleti_dij: int, ulohelyek: int):
+        super().__init__(rendszam, tipus, berleti_dij)
+        self._ulohelyek = ulohelyek
+
+    def leiras(self) -> str:
+        return f"Személyautó, {self._ulohelyek} ülés"
+
+class Teherauto(Auto):
+    def __init__(self, rendszam: str, tipus: str, berleti_dij: int, max_teher_kg: int):
+        super().__init__(rendszam, tipus, berleti_dij)
+        self._max_teher_kg = max_teher_kg
+
+    def leiras(self) -> str:
+        return f"Teherautó, max {self._max_teher_kg} kg"
+
+class Berles:
+    def __init__(self, auto: Auto, datum: date, ugyfel_nev: str):
+        self._auto = auto
+        self._datum = datum
+        self._ugyfel_nev = ugyfel_nev
+
+    @property
+    def auto(self) -> Auto:
+        return self._auto
+
+    @property
+    def datum(self) -> date:
+        return self._datum
+
+    @property
+    def ugyfel_nev(self) -> str:
+        return self._ugyfel_nev
+
+    def ar(self) -> int:
+        return self._auto.berleti_dij
+
+    def __str__(self) -> str:
+        return f"{self._datum.isoformat()} - {self._ugyfel_nev} - {self._auto.rendszam} ({self._auto.tipus}) - {self.ar()} Ft"
+
+class Autokolcsonzo:
+    def __init__(self, nev: str):
+        self._nev = nev
+        self._autok: List[Auto] = []
+        self._berlesek: List[Berles] = []
+
+    @property
+    def nev(self) -> str:
+        return self._nev
+
+    def hozzaad_auto(self, auto: Auto):
+        self._autok.append(auto)
+
+    def hozzaad_berles(self, berles: Berles):
+        self._berlesek.append(berles)
+        berles.auto.foglal_nap(berles.datum)
+
+    def listaz_autok(self):
+        print("\nAutók a kölcsönzőben:")
+        for idx, auto in enumerate(self._autok, start=1):
+            print(f"{idx}. {auto} - {auto.leiras()}")
+
+    def listaz_berlesek(self):
+        print("\nAktív bérlések:")
+        if not self._berlesek:
+            print("Nincs aktív bérlés.")
+            return
+        for idx, berles in enumerate(self._berlesek, start=1):
+            print(f"{idx}. {berles}")
+
+    def keres_auto_rendszam_alapjan(self, rendszam: str) -> Optional[Auto]:
+        for auto in self._autok:
+            if auto.rendszam.lower() == rendszam.lower():
+                return auto
+        return None
+
+    def berel_auto(self, rendszam: str, datum_str: str, ugyfel_nev: str) -> int:
+        auto = self.keres_auto_rendszam_alapjan(rendszam)
+        if auto is None:
+            raise ValueError("Nincs ilyen rendszámú autó.")
+
+        try:
+            datum = datetime.strptime(datum_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Hibás dátum formátum. Használd: ÉÉÉÉ-HH-NN.")
+
+        if datum < date.today():
+            raise ValueError("Hibás dátum: Múltbéli napra nem lehet foglalni.")
+
+        if auto.foglalt_e(datum):
+            raise ValueError("Az autó ezen a napon már foglalt.")
+
+        berles = Berles(auto, datum, ugyfel_nev)
+        self.hozzaad_berles(berles)
+        return berles.ar()
+
+    def lemond_berles(self, index: int):
+        if index < 1 or index > len(self._berlesek):
+            raise IndexError("Nincs ilyen sorszámú bérlés.")
+
+        berles = self._berlesek.pop(index - 1)
+        berles.auto.felszabadit_nap(berles.datum)
+        return berles
+
+def elokeszitett_adatok() -> Autokolcsonzo:
+    kolcsonzo = Autokolcsonzo("Veszprém Autókölcsönző")
+
+    auto1 = Szemelyauto("ABC-123", "Mitsubishi Colt", 10000, 5)
+    auto2 = Szemelyauto("XYZ-456", "Toyota Corolla", 12000, 5)
+    auto3 = Teherauto("TEH-789", "Ford Transit", 18000, 1500)
+
+    kolcsonzo.hozzaad_auto(auto1)
+    kolcsonzo.hozzaad_auto(auto2)
+    kolcsonzo.hozzaad_auto(auto3)
+
+    today = date.today()
+    b1 = Berles(auto1, today + timedelta(days=1), "Kiss Péter")
+    b2 = Berles(auto2, today + timedelta(days=5), "Nagy Anna")
+    b3 = Berles(auto3, today + timedelta(days=7), "Szabó Gábor")
+    b4 = Berles(auto2, today + timedelta(days=10), "Tóth Eszter")
+
+    kolcsonzo.hozzaad_berles(b1)
+    kolcsonzo.hozzaad_berles(b2)
+    kolcsonzo.hozzaad_berles(b3)
+    kolcsonzo.hozzaad_berles(b4)
+
+    return kolcsonzo
+
+def menu():
+    print("\n--- Autókölcsönző Rendszer ---")
+    print("1. Autók listázása")
+    print("2. Autó bérlése")
+    print("3. Bérlés lemondása")
+    print("4. Bérlések listázása")
+    print("0. Kilépés")
+
+def futtat():
+    kolcsonzo = elokeszitett_adatok()
+    print(f"Üdvözöl a {kolcsonzo.nev}!")
+
+    while True:
+        menu()
+        valasz = input("Válassz menüpontot: ").strip()
+
+        if valasz == "1":
+            kolcsonzo.listaz_autok()
+
+        elif valasz == "2":
+            try:
+                rendszam = input("Rendszám: ").strip()
+                datum_str = input("Dátum (ÉÉÉÉ-HH-NN): ").strip()
+                ugyfel_nev = input("Név: ").strip()
+
+                ar = kolcsonzo.berel_auto(rendszam, datum_str, ugyfel_nev)
+                print(f"Sikeres foglalás! Ár: {ar} Ft.")
+            except Exception as e:
+                print(f"Hiba: {e}")
+
+        elif valasz == "3":
+            kolcsonzo.listaz_berlesek()
+            try:
+                sorszam_str = input("Lemondandó bérlés sorszáma: ").strip()
+
+                if not sorszam_str.isdigit():
+                    raise IndexError("Nincs ilyen sorszámú bérlés.")
+
+                sorszam = int(sorszam_str)
+
+                berles = kolcsonzo.lemond_berles(sorszam)
+                print(f"Lemondva: {berles}")
+            except Exception as e:
+                print(f"Hiba: {e}")
+
+        elif valasz == "4":
+            kolcsonzo.listaz_berlesek()
+
+        elif valasz == "0":
+            print("Kilépés...")
+            break
+
+        else:
+            print("Érvénytelen menüpont.")
+
+if __name__ == "__main__":
+    futtat()
